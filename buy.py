@@ -72,8 +72,9 @@ session.mount('http://', adapter)
 
 if USE_PROXY and PROXY_URL:
     session.proxies = {'http': PROXY_URL, 'https': PROXY_URL}
+    logger.info("✅ Proxy enabled")
 
-session.headers.update({"User-Agent": "Mozilla/5.0"})
+session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
 # ==================== API FUNCTIONS ====================
 def api_call(endpoint, params=None):
@@ -222,6 +223,7 @@ def cmd_start(message):
         "👇 <b>Chọn dịch vụ:</b>"
     )
     bot.send_message(message.chat.id, text, reply_markup=get_main_keyboard(), parse_mode="HTML")
+    logger.info(f"User {message.chat.id} started bot")
 
 @bot.message_handler(func=lambda m: m.text in ["📱 OKVIP1", "OKVIP1"])
 def cmd_okvip1(message):
@@ -278,7 +280,7 @@ def cmd_help(message):
         "3️⃣ Nhận số điện thoại\n"
         "4️⃣ Đợi mã OTP tự động\n\n"
         
-        "<b>LỆNH NHANH:</b>\n"
+        "<b>LỆNH:</b>\n"
         "/start - Khởi động bot\n\n"
         
         "<b>NHÀ MẠNG:</b>\n"
@@ -291,12 +293,12 @@ def cmd_help(message):
 def cmd_balance(message):
     result = get_balance()
     if result["status"] == 1:
-        if str(message.chat.id) == ADMIN_ID:
+        if ADMIN_ID and str(message.chat.id) == str(ADMIN_ID):
             bot.reply_to(message, f"💰 <b>Số dư:</b> ${result['balance']:,.2f}", parse_mode="HTML")
         else:
-            bot.reply_to(message, "❌ Bạn không có quyền xem số dư", parse_mode="HTML")
+            bot.reply_to(message, "❌ Không có quyền xem số dư", parse_mode="HTML")
     else:
-        bot.reply_to(message, f"❌ {result['message']}")
+        bot.reply_to(message, f"❌ {result['message']}", parse_mode="HTML")
 
 # ==================== CALLBACK HANDLERS ====================
 @bot.callback_query_handler(func=lambda call: call.data.startswith('rent_'))
@@ -310,7 +312,6 @@ def callback_rent(call):
     
     bot.answer_callback_query(call.id, "Đang xử lý...")
     
-    # Edit message để hiển thị tên dịch vụ và nhà mạng đã chọn
     try:
         bot.edit_message_text(
             f"🎰 <b>OKVIP</b>\n\n"
@@ -330,7 +331,6 @@ def callback_rent(call):
     if result["status"] == 1:
         req_id = result["id"]
         phone = result["phone"]
-        balance = result.get("balance", 0)
         
         user_orders[call.message.chat.id][req_id] = {
             'phone': phone,
@@ -357,7 +357,7 @@ def callback_rent(call):
             daemon=True
         ).start()
         
-        logger.info(f"Order: {req_id} - {phone} - OKVIP")
+        logger.info(f"Order: {req_id} - {phone} - OKVIP - {network_name}")
     else:
         bot.edit_message_text(
             f"🎰 <b>OKVIP</b>\n\n"
@@ -371,11 +371,8 @@ def callback_rent(call):
         )
 
 # ==================== FLASK ROUTES ====================
-@bot.route("/")
+@app.route("/")
 def home():
-    balance_info = get_balance()
-    balance = balance_info.get('balance', 0) if balance_info['status'] == 1 else 0
-    
     html = f"""
     <!DOCTYPE html>
     <html lang="vi">
@@ -386,7 +383,7 @@ def home():
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
-                font-family: 'Segoe UI', sans-serif;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 min-height: 100vh;
                 display: flex;
@@ -398,48 +395,93 @@ def home():
                 background: rgba(255, 255, 255, 0.95);
                 border-radius: 20px;
                 padding: 40px;
-                max-width: 400px;
+                max-width: 450px;
                 width: 100%;
                 box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
                 text-align: center;
             }}
-            h1 {{ color: #667eea; font-size: 2rem; margin-bottom: 10px; }}
+            h1 {{ 
+                color: #667eea; 
+                font-size: 2.5rem; 
+                margin-bottom: 10px;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            }}
+            .subtitle {{
+                color: #64748b;
+                font-size: 1.1rem;
+                margin-bottom: 30px;
+            }}
             .stats {{
                 display: grid;
                 grid-template-columns: repeat(2, 1fr);
-                gap: 15px;
-                margin: 20px 0;
+                gap: 20px;
+                margin: 30px 0;
             }}
             .stat {{
-                background: #f8fafc;
-                padding: 15px;
-                border-radius: 10px;
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                padding: 25px;
+                border-radius: 15px;
+                transition: transform 0.3s, box-shadow 0.3s;
             }}
-            .stat-value {{ font-size: 1.5rem; font-weight: bold; color: #1e293b; }}
-            .footer {{ margin-top: 20px; color: #64748b; font-size: 0.9rem; }}
+            .stat:hover {{
+                transform: translateY(-5px);
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            }}
+            .stat-icon {{
+                font-size: 2.5rem;
+                margin-bottom: 10px;
+            }}
+            .stat-value {{ 
+                font-size: 2rem; 
+                font-weight: bold; 
+                color: #1e293b;
+                margin: 10px 0;
+            }}
+            .stat-label {{
+                color: #64748b;
+                font-size: 0.9rem;
+            }}
+            .footer {{ 
+                margin-top: 30px; 
+                color: #64748b; 
+                font-size: 0.9rem;
+                line-height: 1.6;
+            }}
+            .status-badge {{
+                display: inline-block;
+                background: #10b981;
+                color: white;
+                padding: 8px 20px;
+                border-radius: 20px;
+                font-weight: bold;
+                margin-top: 10px;
+            }}
         </style>
     </head>
     <body>
         <div class="container">
             <h1>🎰 OKVIP BOT</h1>
-            <p>Thuê số OTP tự động</p>
+            <p class="subtitle">Thuê số OTP tự động - Nhanh chóng & Tiện lợi</p>
             
             <div class="stats">
                 <div class="stat">
-                    <div>⏳</div>
+                    <div class="stat-icon">⏳</div>
                     <div class="stat-value">{len(active_checks)}</div>
-                    <div>Đang chờ</div>
+                    <div class="stat-label">Đang chờ OTP</div>
                 </div>
                 <div class="stat">
-                    <div>👥</div>
+                    <div class="stat-icon">👥</div>
                     <div class="stat-value">{len(user_orders)}</div>
-                    <div>Người dùng</div>
+                    <div class="stat-label">Người dùng</div>
                 </div>
             </div>
             
+            <div class="status-badge">✅ ĐANG HOẠT ĐỘNG</div>
+            
             <div class="footer">
-                ⏰ {datetime.now().strftime('%H:%M:%S %d/%m/%Y')}<br>
-                📞 Bot đang hoạt động
+                ⏰ {datetime.now().strftime('%H:%M:%S - %d/%m/%Y')}<br>
+                📱 Hỗ trợ 6 nhà mạng Việt Nam<br>
+                ⚡ Tự động nhận OTP trong 3-5 phút
             </div>
         </div>
     </body>
@@ -452,8 +494,10 @@ def health():
     return jsonify({
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
-        "active": len(active_checks),
-        "users": len(user_orders)
+        "active_checks": len(active_checks),
+        "total_users": len(user_orders),
+        "bot": "OKVIP Bot",
+        "version": "1.0"
     }), 200
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
@@ -473,20 +517,26 @@ def webhook():
 # ==================== WEBHOOK SETUP ====================
 def setup_webhook():
     if USE_POLLING:
+        logger.info("🔄 Polling mode enabled")
         return
     try:
         if not WEBHOOK_URL:
+            logger.error("❌ WEBHOOK_URL not set!")
             return
         time.sleep(2)
         bot.remove_webhook()
         time.sleep(1)
         webhook_url = f"{WEBHOOK_URL.rstrip('/')}/{BOT_TOKEN}"
-        bot.set_webhook(url=webhook_url, drop_pending_updates=True, max_connections=40)
-        logger.info(f"✅ Webhook: {webhook_url}")
+        result = bot.set_webhook(url=webhook_url, drop_pending_updates=True, max_connections=40)
+        if result:
+            logger.info(f"✅ Webhook set successfully: {webhook_url}")
+        else:
+            logger.error("❌ Failed to set webhook")
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        logger.error(f"❌ Webhook setup error: {e}")
 
 def start_polling():
+    logger.info("🔄 Starting polling mode...")
     bot.remove_webhook()
     time.sleep(1)
     bot.infinity_polling(timeout=30, skip_pending=True)
@@ -494,20 +544,33 @@ def start_polling():
 # ==================== MAIN ====================
 if __name__ == "__main__":
     try:
-        logger.info("🚀 Starting OKVIP Bot...")
+        logger.info("=" * 50)
+        logger.info("🚀 Starting OKVIP Bot v1.0")
+        logger.info("=" * 50)
+        logger.info(f"📊 Mode: {'Polling' if USE_POLLING else 'Webhook'}")
+        logger.info(f"🔐 Proxy: {'Enabled' if USE_PROXY else 'Disabled'}")
         
         if USE_POLLING:
             flask_thread = threading.Thread(
-                target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)), debug=False, use_reloader=False),
+                target=lambda: app.run(
+                    host="0.0.0.0", 
+                    port=int(os.getenv("PORT", 10000)), 
+                    debug=False, 
+                    use_reloader=False
+                ),
                 daemon=True
             )
             flask_thread.start()
+            logger.info("✅ Flask server started in background")
             time.sleep(2)
             start_polling()
         else:
             threading.Thread(target=setup_webhook, daemon=True).start()
-            app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)), debug=False, threaded=True)
+            port = int(os.getenv("PORT", 10000))
+            logger.info(f"🌐 Starting Flask server on port {port}")
+            app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
     except KeyboardInterrupt:
-        logger.info("👋 Bot stopped")
+        logger.info("👋 Bot stopped by user")
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
+        logger.error(f"❌ Fatal error: {e}")
+        raise
