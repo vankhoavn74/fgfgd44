@@ -14,7 +14,7 @@ from telebot import types
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_TOKEN = os.getenv("API_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-ADMIN_ID = os.getenv("ADMIN_ID","5617674327")
+ADMIN_ID = os.getenv("ADMIN_ID")
 
 if not all([BOT_TOKEN, API_TOKEN]):
     raise RuntimeError("❌ Missing BOT_TOKEN or API_TOKEN")
@@ -159,15 +159,15 @@ def auto_check_otp(chat_id, request_id, phone, service_name, network_name):
                 
                 msg = (
                     f"✅ <b>OTP ĐÃ VỀ!</b>\n\n"
-                    f"📱 Số: <code>{phone}</code>\n"
-                    f"🌐 {service_name}\n"
-                    f"📶 {network_name}\n"
-                    f"🔑 <code>{code}</code>\n"
+                    f"🎰 <b>OKVIP</b>\n"
+                    f"📞 <b>Số:</b> <code>{phone}</code>\n"
+                    f"📶 <b>Nhà mạng:</b> {network_name}\n\n"
+                    f"🔑 <b>MÃ OTP:</b> <code>{code}</code>\n\n"
                     f"⏰ {datetime.now().strftime('%H:%M:%S')}"
                 )
                 
                 if is_sound:
-                    msg = f"📞 {msg} (Cuộc gọi)"
+                    msg += f"\n📞 <i>(Nhận qua cuộc gọi)</i>"
                 
                 bot.send_message(chat_id, msg, parse_mode="HTML")
                 user_orders[chat_id][request_id]['status'] = 'completed'
@@ -175,7 +175,10 @@ def auto_check_otp(chat_id, request_id, phone, service_name, network_name):
                 break
             elif result.get("status") == 0:
                 bot.send_message(chat_id, 
-                    f"⏰ <b>Hết thời gian chờ</b>\n📱 <code>{phone}</code>",
+                    f"⏰ <b>HẾT THỜI GIAN CHỜ OTP</b>\n\n"
+                    f"🎰 <b>OKVIP</b>\n"
+                    f"📞 <b>Số:</b> <code>{phone}</code>\n"
+                    f"📶 <b>Nhà mạng:</b> {network_name}",
                     parse_mode="HTML"
                 )
                 user_orders[chat_id][request_id]['status'] = 'timeout'
@@ -223,16 +226,16 @@ def cmd_start(message):
 @bot.message_handler(func=lambda m: m.text in ["📱 OKVIP1", "OKVIP1"])
 def cmd_okvip1(message):
     text = (
-        f"📱 <b>{SERVICES['okvip1']['name']}</b>\n\n"
-        f"📶 Chọn nhà mạng:"
+        f"🎰 <b>OKVIP</b>\n\n"
+        f"📶 <b>Chọn nhà mạng:</b>"
     )
     bot.send_message(message.chat.id, text, reply_markup=get_network_keyboard('okvip1'), parse_mode="HTML")
 
 @bot.message_handler(func=lambda m: m.text in ["📱 OKVIP2", "OKVIP2"])
 def cmd_okvip2(message):
     text = (
-        f"📱 <b>{SERVICES['okvip2']['name']}</b>\n\n"
-        f"📶 Chọn nhà mạng:"
+        f"🎰 <b>OKVIP</b>\n\n"
+        f"📶 <b>Chọn nhà mạng:</b>"
     )
     bot.send_message(message.chat.id, text, reply_markup=get_network_keyboard('okvip2'), parse_mode="HTML")
 
@@ -251,15 +254,16 @@ def cmd_orders(message):
     for req_id, info in recent:
         status = info.get('status', 'unknown')
         icon = {'completed': '✅', 'waiting': '⏳', 'timeout': '⌛'}.get(status, '❓')
+        status_text = {'completed': 'Đã nhận OTP', 'waiting': 'Đang chờ', 'timeout': 'Hết hạn'}.get(status, 'Không rõ')
         
-        text += f"{icon} <b>{info.get('service')}</b>\n"
-        text += f"   📞 <code>{info.get('phone')}</code>\n"
-        text += f"   📶 {info.get('network')}\n"
+        text += f"{icon} <b>{info.get('service')}</b> - {status_text}\n"
+        text += f"📞 <code>{info.get('phone')}</code>\n"
+        text += f"📶 {info.get('network')}\n"
         
         if info.get('otp'):
-            text += f"   🔐 <code>{info.get('otp')}</code>\n"
+            text += f"🔑 <code>{info.get('otp')}</code>\n"
         
-        text += f"   ⏰ {info.get('created_at')}\n\n"
+        text += f"⏰ {info.get('created_at')}\n\n"
     
     bot.reply_to(message, text, parse_mode="HTML")
 
@@ -275,8 +279,7 @@ def cmd_help(message):
         "4️⃣ Đợi mã OTP tự động\n\n"
         
         "<b>LỆNH NHANH:</b>\n"
-        "/start - Khởi động bot\n"
-        "/balance - Xem số dư\n\n"
+        "/start - Khởi động bot\n\n"
         
         "<b>NHÀ MẠNG:</b>\n"
         "Mobifone, Vinaphone, Viettel\n"
@@ -288,7 +291,10 @@ def cmd_help(message):
 def cmd_balance(message):
     result = get_balance()
     if result["status"] == 1:
-        bot.reply_to(message, f"💰 <b>Số dư:</b> ${result['balance']:,.2f}", parse_mode="HTML")
+        if str(message.chat.id) == ADMIN_ID:
+            bot.reply_to(message, f"💰 <b>Số dư:</b> ${result['balance']:,.2f}", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ Bạn không có quyền xem số dư", parse_mode="HTML")
     else:
         bot.reply_to(message, f"❌ {result['message']}")
 
@@ -302,13 +308,22 @@ def callback_rent(call):
     service = SERVICES[service_key]
     network_name = NETWORKS.get(network_code, network_code)
     
-    bot.answer_callback_query(call.id, f"Đang xử lý...")
+    bot.answer_callback_query(call.id, "Đang xử lý...")
     
-    msg = bot.send_message(
-        call.message.chat.id,
-        f"⏳ <b>Đang tìm số...</b>\n📱 {service['name']}\n📶 {network_name}",
-        parse_mode="HTML"
-    )
+    # Edit message để hiển thị tên dịch vụ và nhà mạng đã chọn
+    try:
+        bot.edit_message_text(
+            f"🎰 <b>OKVIP</b>\n\n"
+            f"⏳ <b>Đang tìm số...</b>\n"
+            f"📶 <b>Nhà mạng:</b> {network_name}",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="HTML"
+        )
+    except:
+        pass
+    
+    msg = call.message
     
     result = create_order(service['id'], network=network_code)
     
@@ -319,7 +334,7 @@ def callback_rent(call):
         
         user_orders[call.message.chat.id][req_id] = {
             'phone': phone,
-            'service': service['name'],
+            'service': 'OKVIP',
             'network': network_name,
             'status': 'waiting',
             'created_at': datetime.now().strftime('%H:%M:%S %d/%m')
@@ -327,33 +342,36 @@ def callback_rent(call):
         
         text = (
             f"🎉 <b>THUÊ THÀNH CÔNG!</b>\n\n"
-            f"📱 <code>{phone}</code>\n\n"
-            f"🌐 {service['name']}\n"
-            f"📶 {network_name}\n"
-            f"🆔 <code>{req_id}</code>\n"
-            f"💰 Còn: ${balance:,.2f}\n\n"
-            f"⚡ Đang chờ OTP..."
+            f"🎰 <b>OKVIP</b>\n"
+            f"📞 <b>Số điện thoại:</b>\n<code>{phone}</code>\n\n"
+            f"📶 <b>Nhà mạng:</b> {network_name}\n"
+            f"🆔 <b>Mã đơn:</b> <code>{req_id}</code>\n\n"
+            f"⚡ <b>Đang chờ OTP tự động...</b>"
         )
         
         bot.edit_message_text(text, call.message.chat.id, msg.message_id, parse_mode="HTML")
         
         threading.Thread(
             target=auto_check_otp,
-            args=(call.message.chat.id, req_id, phone, service['name'], network_name),
+            args=(call.message.chat.id, req_id, phone, 'OKVIP', network_name),
             daemon=True
         ).start()
         
-        logger.info(f"Order: {req_id} - {phone} - {service['name']}")
+        logger.info(f"Order: {req_id} - {phone} - OKVIP")
     else:
         bot.edit_message_text(
-            f"❌ <b>Lỗi:</b> {result['message']}",
+            f"🎰 <b>OKVIP</b>\n\n"
+            f"❌ <b>THUÊ SỐ THẤT BẠI</b>\n\n"
+            f"<b>Lý do:</b> {result['message']}\n"
+            f"📶 <b>Nhà mạng:</b> {network_name}\n\n"
+            f"💡 Vui lòng thử lại sau",
             call.message.chat.id,
             msg.message_id,
             parse_mode="HTML"
         )
 
 # ==================== FLASK ROUTES ====================
-@app.route("/")
+@bot.route("/")
 def home():
     balance_info = get_balance()
     balance = balance_info.get('balance', 0) if balance_info['status'] == 1 else 0
@@ -386,13 +404,6 @@ def home():
                 text-align: center;
             }}
             h1 {{ color: #667eea; font-size: 2rem; margin-bottom: 10px; }}
-            .balance {{
-                background: linear-gradient(135deg, #fef3c7 0%, #f59e0b 100%);
-                padding: 20px;
-                border-radius: 15px;
-                margin: 20px 0;
-            }}
-            .balance-amount {{ font-size: 1.8rem; font-weight: bold; color: #92400e; }}
             .stats {{
                 display: grid;
                 grid-template-columns: repeat(2, 1fr);
@@ -412,12 +423,6 @@ def home():
         <div class="container">
             <h1>🎰 OKVIP BOT</h1>
             <p>Thuê số OTP tự động</p>
-            
-            <div class="balance">
-                <div>💰</div>
-                <div class="balance-amount">${balance:,.2f}</div>
-                <div>Số dư</div>
-            </div>
             
             <div class="stats">
                 <div class="stat">
